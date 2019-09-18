@@ -1,0 +1,400 @@
+---
+title: 'Song Lyrics: The Soul of Music'
+author: ""
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+![](../figs/lyricspicture.jpg) 
+
+
+\newline
+
+<font size=3>
+
+Would you rather have music from artists that just make you dance or have music with lyrics that make you think or feel the words? Music is more than something that’s just pleasing to the ears. It has the ability to make you feel, think, and take you on a journey. Music brings us all together, but it’s lyrics that free our souls. 
+
+In this project, I apply text mining and natural language processing techniques to get insight into the characteristics of different types of song lyrics. Once I compare the lyrics of songs in distinct music genres, I identify several interesting patterns on their sentiments, topics and content length. Intriguingly, more inspiration is derived by relating the lyrics' sentiments with the music history.
+
+\newline
+
+```{r, warning=F, message=F, echo=F}
+# load all the required packages
+library(tm)
+library(tidytext)
+library(textdata)
+library(tokenizers)
+library(tidyverse)
+library(beeswarm)
+library(syuzhet)
+library(d3heatmap)
+library(ggplot2)
+library(wordcloud2)
+library(htmlwidgets)
+library(topicmodels)
+library(RColorBrewer)
+library(kableExtra)
+library(gridExtra)
+```
+
+
+## I. Sentence Analysis
+
+```{r, warning=F, message=F, echo=F}
+# load data
+load('../output/processed_lyrics.RData') 
+```
+
+In order to get some basic patterns and characteristics of different types of song lyrics, I first analyze the content length of songs written in 2016.
+
+### Overview of song length
+
+```{r, fig.width=9, fig.height=6}
+sentence.data <- dt_lyrics %>% 
+                 filter(genre!='Not Available' & genre!='Other') %>% 
+                 filter(year==2016)
+word.count <- count_words(sentence.data$lyrics)
+sentence.data <- cbind(sentence.data, word.count)     
+sentence.data.beeswarm <- sentence.data %>%
+                          select(genre, word.count)
+sentence.data.beeswarm$genre <- factor(sentence.data.beeswarm$genre)
+sentence.data.beeswarm$order <- reorder(sentence.data.beeswarm$genre,
+                                        sentence.data.beeswarm$word.count,
+                                        mean,
+                                        order=T)              
+beeswarm(word.count~order,
+         data=sentence.data.beeswarm,
+         horizontal = TRUE,
+         pch=16, col=alpha(brewer.pal(9, "Set1"), 0.6),
+         cex=0.6, cex.axis=1, cex.lab=1,
+         spacing=5/nlevels(sentence.data.beeswarm$order),
+         las=2, xlab="Number of words in a song", ylab="",
+         main="Songs written in 2016")
+```
+
+
+<font size=3>
+
+We notice that Hip-Hop songs are inarguably longer than other song genres on average and songs from Jazz genre seem to have content that's shorter in length. This indicates that lyrics is an extremely important part of Hip-Hop songs, which usually consist of a stylized rhythmic music that commonly accompanies rapping. They mainly use lyrics help listeners create a mental image of whatever the song is talking about. On the other hand, since the melody of Jazz music is more colorful, the lyrics of a Jazz song may have to sacrifice a little bit. In fact, some Jazz music subsist just fine without words. It seems that the average song length has sort of stabilized around 250 words for most genres, and rock songs seems to be popular in recent years.
+
+
+Then, let's take a look at the songs with the shortest and longest length.
+
+### The shortest song
+
+```{r}
+index <- which.min(sentence.data$word.count)
+shortest.data <- sentence.data[index, ]
+shortest.sents <- strsplit(shortest.data$lyrics, 
+                           split='\\n')[[1]] %>%
+                  gsub(pattern="^(\\[*[A-Za-z]+\\:*\\])", replacement='') %>%
+                  gsub(pattern="^(\\[[A-Za-z]+\\s\\&\\s[A-Za-z]+\\:(\\s\\([A-Za-z]+\\))*\\])", replacement='') %>%
+                  gsub(pattern="(\\[[0-9A-Za-z]+\\:*\\])$", replacement='') %>%
+                  str_trim()
+word.count <- count_words(shortest.sents)
+if (any(word.count==0)){
+    shortest.sents <- shortest.sents[!(word.count==0)]
+    word.count <-word.count[!(word.count==0)]
+}  
+shortest.sents  <- data.frame(shortest.sents)
+colnames(shortest.sents) <- toupper(shortest.data$song)
+kable(shortest.sents, align = 'c') %>%  kable_styling() 
+```
+
+
+
+<font size=3>
+The shortest song is of Metal genre, and it only has 44 words.
+
+### The longest song
+
+```{r}
+index <- which.max(sentence.data$word.count)
+longest.data <- sentence.data[index, ]
+longest.sents <- strsplit(longest.data$lyrics, 
+                           split='\\n')[[1]] %>%
+                  gsub(pattern="^(\\[*[A-Za-z]+\\:*\\])", replacement='') %>%
+                  gsub(pattern="^(\\[[A-Za-z]+\\s\\&\\s[A-Za-z]+\\:(\\s\\([A-Za-z]+\\))*\\])", replacement='') %>%
+                  gsub(pattern="(\\[[0-9A-Za-z]+\\:*\\])$", replacement='') %>%
+                  str_trim()
+word.count <- count_words(longest.sents)
+if (any(word.count==0)){
+    longest.sents <- longest.sents[!(word.count==0)]
+    word.count <-word.count[!(word.count==0)]
+}  
+longest.sents  <- data.frame(longest.sents)
+colnames(longest.sents) <- toupper(longest.data$song)
+kable(longest.sents, align = 'c') %>% 
+                  kable_styling()  %>% 
+                  scroll_box(width = "100%", height = "500px")
+
+    
+```
+
+
+
+<font size=3>
+The longest one is a Hip-Hop song with no doubt and there are 1523 words in its lyrics.
+
+
+
+
+## II. Sentiment Analysis
+
+<font size=3>
+In the second part, I analyze the sentiments expressed by different kinds of music. Using sentiment analysis, we can get to know how the artists convey their thoughts and emotions through lyrics to their listeners. I analyze each song based on the eight basic emotions and two sentiments, namely anger, fear, anticipation, trust, surprise, sadness, joy, disgust, negative and positive.
+
+
+```{r, fig.width=10, fig.height=4, warning=F, message=F}
+# sentiment analysis
+tokenized <- dt_lyrics %>% 
+             select(genre, stemmedwords) %>% 
+             unnest_tokens(word, stemmedwords)
+# the nrc dictionary
+nrc <- get_sentiments("nrc")
+sentiment.count <- tokenized %>%
+                   group_by(genre) %>%
+                   inner_join(nrc) %>%
+                   count(sentiment) %>%
+                   spread(sentiment, n, fill=0) %>%
+                   filter(genre!='Not Available' & genre!='Other') %>%
+                   ungroup()
+sentiment.level <- sentiment.count$genre
+matrix <- as.matrix(sentiment.count %>% select(-genre))
+sentiment.score <- diag(1/(apply(matrix,1,sum))) %*% matrix
+rownames(sentiment.score) <- sentiment.level
+d3heatmap(sentiment.score, colors='Reds', scale='none', Rowv=T, Colv=F,
+          xaxis_font_size="15px")
+```
+
+
+
+<font size=3>
+According to this heatmap, we know that most of the genres are trying to show positivity, which is clearly indicated by music like Jazz, Pop, Electronic and Folk. Metal and Hip-Pop songs tend to convey negative emotions while music genres such as Indie and Rock express neutral sentiments in genral. Basically, none of these genres talk much about surprise and disgust. What's more, the reason why Metal music is so negative is that it uses more words with anger, fear and sadness. On the other hand, joy plays an important role in Jazz songs.
+
+### Wordclouds 
+
+<font size=3>
+Since the emotions conveyed by Jazz and Metal songs seem to differ a lot, I count the frequency of words in them, and use wordclouds to find the most frequently used words in their lyrics. 
+
+```{r, fig.width=9, fig.height=4}
+# wordcloud for jazz
+cloud.jazz <- dt_lyrics %>%
+              filter(genre=="Jazz") %>%
+              select(stemmedwords)
+corpus.jazz <- VCorpus(VectorSource(cloud.jazz))
+dtm.jazz <- DocumentTermMatrix(corpus.jazz)
+word.jazz <- colnames(as.matrix(dtm.jazz))
+cloud.jazz <- data.frame(word=word.jazz,
+                         freq=apply(as.matrix(dtm.jazz), 2, sum))
+cloud.jazz <- cloud.jazz[order(cloud.jazz$freq, decreasing=T), ] 
+wordcloud2(data=cloud.jazz[1:200,], size=1.2)
+
+```
+
+<font size=3>
+In Jazz music, the word "love" holds a dominant position among all the words. Other words like "baby", "night", "heart" and "dream" also appear frequently. 
+
+```{r, fig.width=9, fig.height=4}
+# wordcloud for metal
+cloud.metal <- dt_lyrics %>%
+              filter(genre=="Metal") %>%
+              select(stemmedwords)
+corpus.metal <- VCorpus(VectorSource(cloud.metal))
+dtm.metal <- DocumentTermMatrix(corpus.metal)
+word.metal <- colnames(as.matrix(dtm.metal))
+cloud.metal <- data.frame(word=word.metal,
+                          freq=apply(as.matrix(dtm.metal), 2, sum))
+cloud.metal <- cloud.metal[order(cloud.metal$freq, decreasing=T), ] 
+picture.metal <- wordcloud2(data=cloud.metal[1:100,], size=0.5, shape="diamond")
+saveWidget(picture.metal,"metal.html",selfcontained = F)
+file <- webshot::webshot("metal.html","metal.png",vwidth = 900, vheight = 500, delay =10)
+
+```
+
+![](metal.png)
+
+<font size=3>
+From the wordcloud of Metal music, we can see that, compared with Jazz music, many depressing words such as "dark", "blood", "die", "pain" and "lie" are mentioned very often by Metal music artists. We can also conclude that Metal songs seem to consist of a mixture of emotions. 
+
+
+### The music history
+
+<font size=3>
+Next, I relate the lyrics' sentiments with the music history to see if I can get more inspiration. Using stack plot, I visualize the songs' emotion flow as time goes on. Jazz, Pop, Electronic and Metal musics are selected here to explore the patterns behind music history.
+
+```{r}
+# sentiment analysis
+# summary the emotions in another way
+# emotions <- get_nrc_sentiment(dt_lyrics$stemmedwords)
+# weights <- 1/count_words(dt_lyrics$stemmedwords)
+# sentiments <- NULL
+# for (i in 1:nrow(emotions)){
+#   sentiments <- rbind(sentiments,
+#                       emotions[i,]*weights[i])
+# }
+# save(sentiments, file="../output/sentiments.RData")
+load("../output/sentiments.RData")
+senti.df <- cbind(dt_lyrics %>% select(year, genre, id, stemmedwords),
+                  sentiments)
+```
+
+```{r, fig.width=9, fig.height=6}
+stackplot <- function(genrename){
+  senti <- senti.df %>% 
+           filter(genre==genrename)
+  senti.stack <-  senti %>%
+                  group_by(year) %>%
+                  summarise(
+                       anger=mean(anger),
+                       anticipation=mean(anticipation),
+                       disgust= mean(disgust),
+                       fear=mean(fear),
+                       joy=mean(joy),
+                       sadness=mean(sadness),
+                       surprise=mean(surprise),
+                       trust=mean(trust)
+                      ) %>%
+                  gather(key="sentiment", value="score", -year)
+  # percentage <- function(scores){
+  #   return(scores/sum(scores))
+  # }
+  # senti.metal.stack <- cbind(senti.metal.stack %>% select(year),
+  #                            t(apply(senti.metal.stack %>% select(-year),
+  #                                  1, percentage))
+  #                            ) %>%
+  #                            gather(key="sentiment", value="score", -year)
+
+  p <- ggplot(data=senti.stack, aes(x=year, y=score, fill=sentiment)) +
+              geom_area(colour="black") +
+              scale_fill_manual(values=rainbow(8)) +
+              ylab("")+
+              ggtitle(genrename) +
+              theme_bw()+
+              theme(plot.title = element_text(hjust = 0.5, face = "bold", size=15),
+                    panel.grid=element_blank(),
+                    axis.text.y=element_blank(),
+                    axis.ticks.y=element_blank()
+                    )
+  
+  return(p) 
+}
+
+```
+
+
+
+```{r, fig.width=9, fig.height=6}
+p1 <- stackplot("Jazz")
+p2 <- stackplot("Pop")
+p3 <- stackplot("Electronic")
+p4 <- stackplot("Metal")
+grid.arrange(p1,p2)
+grid.arrange(p3,p4)
+```
+
+<font size=3>
+We can clearly see again that Jazz musics mainly express joy and anticipation in their lyrics. Things become interesting around the 1990s. Negative emotions like anger, fear and sadness almost disappear in Jazz music in 1993 and the sentiment flow goes down to a very low level at that time. But just about two years later, the emotion flow peaks, and Jazz music suddenly begin to show more depressing emotions, especially sadness and anger. The emotions become equally weighted after 2005, which means the Jazz music has formed its own unique style.
+
+The same pattern exists for Pop music, only the time differs a little bit.
+
+Electronic music has gone through a series of cycles over the decades as its sentiments flow fluctuates a lot during the music history. 
+
+Although Metal music delivers more negative words in fear, sadness and anger, it develops with a relatively flat and smooth emotion flow. 
+
+
+
+
+## III. Topic Modeling
+
+<font size=3>
+Lastly, I utilize LDA model, a method for unsupervised classification of documents, to discover more difference between different musical genres. I manually set the topic number to be 10. 
+
+```{r, warning=F, message=F, echo=F}
+topic.data <- dt_lyrics %>% 
+              filter(genre!='Not Available' & genre!='Other')  %>% 
+              filter(year>2013) 
+             
+    
+corpus <- VCorpus(VectorSource(topic.data$stemmedwords))
+#dtm <- DocumentTermMatrix(corpus)
+#save(dtm, file="../output/dtm.RData")
+load("../output/dtm.RData")
+```
+
+```{r, warning=F, message=F, echo=F}
+# burnin <- 4000
+# iter <- 2000
+# thin <- 500
+# seed <-list(2003,5,63,100001,765)
+# nstart <- 5
+# best <- TRUE
+# 
+  k <- 10
+# 
+# 
+# lda.out <- LDA(dtm, k, method="Gibbs", control=list(nstart=nstart, 
+#                                                  seed = seed, best=best,
+#                                                  burnin = burnin, iter = iter, 
+#                                                  thin=thin))
+#save(lda.out, file="../output/lda_output.RData")
+load("../output/lda_output.RData")
+```
+
+
+```{r, warning=F, message=F}
+# the most likely topics for each document
+lda.topics <- as.matrix(topics(lda.out))
+# matrix containing the most likely terms for each topic
+lda.terms <- as.matrix(terms(lda.out, 30)) 
+topic.prob <- as.data.frame(lda.out@gamma)
+topic.beta <- scale(lda.out@beta)
+top.terms <- NULL
+for (i in 1:k){
+  order <- order(topic.beta[i,], decreasing=T)[1:20]
+  top.terms <- rbind(top.terms, lda.out@terms[order])
+}
+#top.terms
+kable(lda.terms, align = 'c') %>% 
+                  kable_styling()  %>% 
+                  scroll_box(width = "100%", height = "500px")
+```
+
+\newline
+<font size=3>
+The table shows the most popular terms in each topic. For example, Topic 1 contains words:"Friend","Party" and "Play"; Topic 3 contains words:"Sky","Sea" and "Wind". Based on the most prominent terms in each topic, I tag them as **Friend, Dirty Word, Nature, Family, Game, Life, Love, Dream, Belief and Body**. 
+
+
+
+```{r, fig.width=10, fig.height=4, warning=F, message=F}
+topictag <- c("Friend", "Dirty Word", "Nature", "Family","Game", 
+              "Life", "Love", "Dream", "Belief", "Body" )
+colnames(topic.prob) <- topictag
+topic.df <- cbind(topic.data %>% select(genre),
+                  topic.prob)
+topic.summary <- tbl_df(topic.df) %>%
+                 group_by(genre) %>%
+                 summarise_each(funs(mean))
+rownames(topic.summary) <- topic.summary$genre
+topic.heatmap <- topic.summary %>% select(-genre)
+d3heatmap(topic.heatmap, colors='Reds', scale='none', Rowv=T, Colv=F,
+          xaxis_font_size="15px")
+```
+
+<font size=3>
+We could see that the Dirty Word cell of Hip-Hop has the darkest color in the heatmap. That is to say, obscene and vulgar language is widely used by Hip-Hop music artists, and their topics are unfortunately linked to violence, sexuality, or drug use. Metal music pays much attention to topic related to Belief, which means it may contain significant religious components and messages. Actually, a big branch of Metal music is called Christian metal. What's more, Rock and Indie tends to have similar weight allocation among these topics.
+
+
+
+## IV. Conclusions
+
+<font size=3>
+
++ In general, Hip-Hop music tend to use more words in their lyrics to express their emotions and impress the listerners, while the lyrics of a Jazz song may have to sacrifice for its colorful melody. For other musical genres, the average song length has sort of stabilized around 250 words.
+
++ Basically, the majority of the genres tend to show positivity. Metal and Hip-Pop songs tend to convey negative emotions, but none of these songs talk much about surprise and disgust. Their emotion flows also behave differently during the music history. Music such as Electronic goes through a series of cycles while Metal music seems to evolve smoothly. In fact, each genre has its unique music history.
+
++ The topics of Hip-Hop songs are unfortunately related to violence, sexuality, or drug use. Metal music surprisingly contains significant religious components. Some of the music genres do not show much difference on their topics.
+
