@@ -16,7 +16,7 @@ Term: Fall 2019
 
 + Main results: 1. In general, Hip-Hop music tend to use more words in their lyrics to express their emotions and impress the listerners, while the lyrics of a Jazz song may have to sacrifice for its colorful melody. For other musical genres, the average song length has sort of stabilized around 250 words. 2. Basically, the majority of the genres tend to show positivity. Metal and Hip-Pop songs tend to convey negative emotions, but none of these songs talk much about surprise and disgust. Their emotion flows also behave differently during the music history. Music such as Electronic goes through a series of cycles while Metal music seems to evolve smoothly. In fact, each genre has its unique music history. 3. The topics of Hip-Hop songs are unfortunately related to violence, sexuality, or drug use. Metal music surprisingly contains significant religious components. Some of the music genres do not show much difference on their topics.
 
-+ Compelete data story: [Song Lyrics: The Soul of Music](doc/project1_report.html)
++ Compelete data story: [Song Lyrics: The Soul of Music](doc/Project1_report.html)
 
 Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
 
