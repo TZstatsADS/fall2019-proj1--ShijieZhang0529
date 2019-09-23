@@ -15,6 +15,7 @@ Term: Fall 2019
 + Project summary: In this project, I apply text mining and natural language processing techniques to get insight into the characteristics of different types of song lyrics. Once I compare the lyrics of songs in distinct music genres, I identify several interesting patterns on their sentiments, topics and content length. Intriguingly, more inspiration is derived by relating the lyrics’ sentiments with the music history.
 
 + Main results:
+
 In general, Hip-Hop music tend to use more words in their lyrics to express their emotions and impress the listerners, while the lyrics of a Jazz song may have to sacrifice for its colorful melody. For other musical genres, the average song length has sort of stabilized around 250 words.
 
 Basically, the majority of the genres tend to show positivity. Metal and Hip-Pop songs tend to convey negative emotions, but none of these songs talk much about surprise and disgust. Their emotion flows also behave differently during the music history. Music such as Electronic goes through a series of cycles while Metal music seems to evolve smoothly. In fact, each genre has its unique music history.
